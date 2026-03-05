@@ -4,6 +4,10 @@ const cors = require('cors');
 const helmet = require('helmet');
 require('dotenv').config();
 
+// Suppress deprecated Mongoose option warnings
+mongoose.set('returnOriginal', false);
+
+
 const app = express();
 
 // Middleware
@@ -38,7 +42,6 @@ mongoose.connection.on('disconnected', () => {
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/questions', require('./routes/questions'));
-app.use('/api/users', require('./routes/users'));
 app.use('/api/admin', require('./routes/admin'));
 
 app.get('/', (req, res) => {

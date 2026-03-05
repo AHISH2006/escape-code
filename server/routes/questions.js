@@ -1,152 +1,135 @@
 const express = require('express');
 const Question = require('../models/Question');
 const Settings = require('../models/Settings');
-const User = require('../models/User');
+const Student = require('../models/Student');   // Students collection
 const { authMiddleware, adminMiddleware } = require('../middleware/authMiddleware');
 const router = express.Router();
 
-// @route   GET api/questions
-// @desc    Get all questions (Admin) or current round questions (Student)
+// @route   GET /api/questions
+// @desc    Admin → all questions with answers | Student → questions without answers
 router.get('/', authMiddleware, async (req, res) => {
     try {
-        let questions;
         if (req.user.role === 'admin') {
-            questions = await Question.find();
-        } else {
-            // Check if exam is started
-            const settings = await Settings.findOne();
-            if (!settings || !settings.isExamStarted) {
-                return res.status(403).json({ message: 'Exam has not started yet.' });
-            }
-
-            // Record student start time if not already set
-            const user = await User.findById(req.user.id);
-            if (user && !user.startTime) {
-                user.startTime = new Date();
-                await user.save();
-            }
-
-            questions = await Question.find().select('-correctOutput'); // Hide answer
+            return res.json(await Question.find());
         }
-        res.json(questions);
+
+        const settings = await Settings.findOne().sort({ updatedAt: -1 });
+        if (!settings || !settings.isExamStarted) {
+            return res.status(403).json({ message: 'Exam has not started yet.' });
+        }
+
+        // Record start time on first question fetch
+        const student = await Student.findById(req.user.id);
+        if (student && !student.startTime) {
+            student.startTime = new Date();
+            await student.save();
+        }
+
+        // Hidden correctOutput for students
+        return res.json(await Question.find().select('-correctOutput'));
     } catch (err) {
         res.status(500).send('Server error');
     }
 });
 
+// @route   POST /api/questions
+// @desc    Admin: add a new question
 router.post('/', [authMiddleware, adminMiddleware], async (req, res) => {
     try {
-        const newQuestion = new Question(req.body);
-        const question = await newQuestion.save();
-        res.json(question);
+        const q = await new Question(req.body).save();
+        res.json(q);
     } catch (err) {
         res.status(500).send('Server error');
     }
 });
 
-// @route   POST api/questions/submit
-// @desc    Submit all answers and finalize the exam for a student
+// @route   POST /api/questions/submit
+// @desc    Student finalizes the exam
 router.post('/submit', authMiddleware, async (req, res) => {
     try {
-        const user = await User.findById(req.user.id);
-        if (!user) return res.status(404).json({ message: 'User not found' });
+        const student = await Student.findById(req.user.id);
+        if (!student) return res.status(404).json({ message: 'Student not found' });
+        if (student.isCompleted) return res.status(400).json({ message: 'Exam already submitted.' });
 
-        if (user.isCompleted) {
-            return res.status(400).json({ message: 'Exam already submitted.' });
+        student.endTime = new Date();
+        student.isCompleted = true;
+
+        if (student.startTime) {
+            student.duration = Math.floor((student.endTime - student.startTime) / 1000);
         }
 
-        user.endTime = new Date();
-        user.isCompleted = true;
-
-        // Calculate duration in seconds
-        if (user.startTime) {
-            const diff = user.endTime.getTime() - user.startTime.getTime();
-            user.duration = Math.floor(diff / 1000);
-        }
-
-        // Logic for score calculation can be added here if needed
-        // For now, we just mark as complete
-        await user.save();
-
-        res.json({ message: 'Exam submitted successfully', duration: user.duration });
+        await student.save();
+        res.json({ message: 'Exam submitted successfully', duration: student.duration });
     } catch (err) {
         res.status(500).send('Server error');
     }
 });
 
-// @route   POST api/questions/submit-answer
-// @desc    Submit an answer for a single question
+// @route   POST /api/questions/submit-answer
+// @desc    Student submits a single answer
 router.post('/submit-answer', authMiddleware, async (req, res) => {
     const { questionId, code, output } = req.body;
     try {
         const question = await Question.findById(questionId);
         if (!question) return res.status(404).json({ message: 'Question not found' });
 
-        const user = await User.findById(req.user.id);
-        if (!user) return res.status(404).json({ message: 'User not found' });
+        const student = await Student.findById(req.user.id);
+        if (!student) return res.status(404).json({ message: 'Student not found' });
 
-        // Simple check: compare output (trimmed and case-insensitive)
         const isCorrect = output.trim().toLowerCase() === question.correctOutput.trim().toLowerCase();
 
-        // Update or add submission
-        const existingSubIndex = user.submissions.findIndex(s => s.questionId.toString() === questionId);
-        if (existingSubIndex > -1) {
-            user.submissions[existingSubIndex] = {
-                questionId,
-                code,
-                output,
-                isCorrect,
-                submittedAt: new Date()
-            };
-        } else {
-            user.submissions.push({
-                questionId,
-                code,
-                output,
-                isCorrect
-            });
-        }
+        // Upsert submission
+        const idx = student.submissions.findIndex(s => s.questionId.toString() === questionId);
+        const subData = { questionId, code, output, isCorrect, submittedAt: new Date() };
+        if (idx > -1) student.submissions[idx] = subData;
+        else student.submissions.push(subData);
 
-        // Update score if correct and not already scored for this question
-        // This is a simple logic, can be refined
-        const previousCorrectCount = user.submissions.filter(s => s.isCorrect).length;
-        // recalculate score based on all correct submissions
-        let totalScore = 0;
-        for (const sub of user.submissions) {
+        // Recalculate total score from all correct submissions
+        let totalScore = 0, correctCount = 0;
+        for (const sub of student.submissions) {
             if (sub.isCorrect) {
+                correctCount++;
                 const q = await Question.findById(sub.questionId);
                 if (q) totalScore += q.marks;
             }
         }
-        user.score = totalScore;
+        student.score = totalScore;
 
-        await user.save();
-        res.json({ isCorrect, message: isCorrect ? 'Correct solution detected!' : 'Output mismatch detected.', score: user.score });
+        // Auto-complete if all questions answered correctly
+        const totalQuestions = await Question.countDocuments();
+        if (correctCount >= totalQuestions && !student.isCompleted) {
+            student.isCompleted = true;
+            student.endTime = new Date();
+            const settings = await Settings.findOne().sort({ updatedAt: -1 });
+            const base = settings?.startTime || student.startTime;
+            student.duration = Math.floor((student.endTime - new Date(base)) / 1000);
+        }
+
+        await student.save();
+        res.json({ isCorrect, score: student.score, isCompleted: student.isCompleted, duration: student.duration });
     } catch (err) {
         console.error(err);
         res.status(500).send('Server error');
     }
 });
 
-// @route   PUT api/questions/:id
-// @desc    Update a question
+// @route   PUT /api/questions/:id  — Admin: update question
 router.put('/:id', [authMiddleware, adminMiddleware], async (req, res) => {
     try {
-        const question = await Question.findByIdAndUpdate(req.params.id, req.body, { new: true });
-        if (!question) return res.status(404).json({ message: 'Question not found' });
-        res.json(question);
+        const q = await Question.findByIdAndUpdate(req.params.id, req.body, { returnDocument: 'after' });
+        if (!q) return res.status(404).json({ message: 'Question not found' });
+        res.json(q);
     } catch (err) {
         res.status(500).send('Server error');
     }
 });
 
-// @route   DELETE api/questions/:id
-// @desc    Delete a question
+// @route   DELETE /api/questions/:id  — Admin: delete question
 router.delete('/:id', [authMiddleware, adminMiddleware], async (req, res) => {
     try {
-        const question = await Question.findByIdAndDelete(req.params.id);
-        if (!question) return res.status(404).json({ message: 'Question not found' });
-        res.json({ message: 'Question deleted successfully' });
+        const q = await Question.findByIdAndDelete(req.params.id);
+        if (!q) return res.status(404).json({ message: 'Question not found' });
+        res.json({ message: 'Question deleted' });
     } catch (err) {
         res.status(500).send('Server error');
     }
