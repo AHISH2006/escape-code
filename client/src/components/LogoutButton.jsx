@@ -11,17 +11,11 @@ const LogoutButton = ({ className = "" }) => {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={logout}
-            className={`btn btn-outline-danger fw-bold text-uppercase d-flex align-items-center gap-2 ${className}`}
-            style={{
-                letterSpacing: '0.1em',
-                fontSize: '0.75rem',
-                borderRadius: '10px',
-                padding: '0.5rem 1rem'
-            }}
+            className={`btn-neon-logout ${className}`}
             title="Terminate Session"
         >
-            <LogOut size={16} />
-            <span>Logout</span>
+            <LogOut size={14} />
+            <span>TERMINATE_SESSION</span>
         </motion.button>
     );
 };

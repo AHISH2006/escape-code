@@ -134,7 +134,7 @@
 }
 
 .login-input::placeholder {
-    color: rgba(243, 82, 82, 0.2);
+    color: rgba(252, 252, 252, 0.5);
 }
 
 /* Login Specific Overrides */

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PlusCircle, Trophy, List, Settings, BarChart3, Database, UserPlus, Users, LogOut } from 'lucide-react';
+import { PlusCircle, Trophy, List, Settings, BarChart3, Database, UserPlus, Users, LogOut, CheckCircle2, BarChart2 } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import LogoutButton from '../components/LogoutButton';
@@ -13,12 +13,16 @@ const AdminDashboard = () => {
         totalQuestions: 0,
         avgScore: 0
     });
-    const [settings, setSettings] = useState({ isExamStarted: false, examDuration: 60 });
+    const [settings, setSettings] = useState({ isExamStarted: false, examDuration: 30, prepDuration: 0, startTime: null });
+    const [prepTimeLeft, setPrepTimeLeft] = useState(0);
+    const [examTimeLeft, setExamTimeLeft] = useState(0);
     const [students, setStudents] = useState([]);
     const [selectedStudent, setSelectedStudent] = useState(null);
     const [showForm, setShowForm] = useState(false);
     const [showStudents, setShowStudents] = useState(false);
     const [showQuestions, setShowQuestions] = useState(false);
+    const [showReport, setShowReport] = useState(false);
+    const [examReport, setExamReport] = useState(null);
     const [allQuestions, setAllQuestions] = useState([]);
     const [editingQuestion, setEditingQuestion] = useState(null);
     const [newQuestion, setNewQuestion] = useState({
@@ -37,17 +41,25 @@ const AdminDashboard = () => {
 
     const fetchStats = async () => {
         try {
-            const countRes = await axios.get('http://localhost:5000/api/users/count');
-            const questions = await axios.get('http://localhost:5000/api/questions');
-            const leaderboardRes = await axios.get('http://localhost:5000/api/users/leaderboard');
+            const adminStatsRes = await axios.get('http://localhost:5000/api/admin/stats');
+            const questionsRes = await axios.get('http://localhost:5000/api/questions');
 
             setStats({
-                totalStudents: countRes.data.count,
-                totalQuestions: questions.data.length,
-                avgScore: leaderboardRes.data.reduce((acc, curr) => acc + curr.score, 0) / (leaderboardRes.data.length || 1)
+                totalStudents: adminStatsRes.data.totalStudents,
+                totalQuestions: questionsRes.data.length,
+                avgScore: adminStatsRes.data.avgScore
             });
         } catch (err) {
             console.error("Failed to fetch stats", err);
+        }
+    };
+
+    const fetchExamReport = async () => {
+        try {
+            const res = await axios.get('http://localhost:5000/api/admin/exam-report');
+            setExamReport(res.data);
+        } catch (err) {
+            console.error('Failed to fetch exam report', err);
         }
     };
 
@@ -83,23 +95,56 @@ const AdminDashboard = () => {
         fetchSettings();
         fetchStudents();
         fetchQuestions();
-        const interval = setInterval(() => {
+        fetchExamReport();
+        const statsInterval = setInterval(() => {
             fetchStudents();
             fetchStats();
+            fetchSettings();
+            fetchExamReport();
         }, 10000);
-        return () => clearInterval(interval);
-    }, []);
+
+        const timerInterval = setInterval(() => {
+            if (settings.isExamStarted && settings.startTime) {
+                const start = new Date(settings.startTime);
+                const prepMs = (settings.prepDuration || 0) * 60000;
+                const examMs = (settings.examDuration || 30) * 60000;
+                const prepEnd = new Date(start.getTime() + prepMs);
+                const examEnd = new Date(prepEnd.getTime() + examMs);
+                const now = new Date();
+                setPrepTimeLeft(Math.max(0, Math.floor((prepEnd - now) / 1000)));
+                setExamTimeLeft(Math.max(0, Math.floor((examEnd - now) / 1000)));
+            } else {
+                setPrepTimeLeft(0);
+                setExamTimeLeft(0);
+            }
+        }, 1000);
+
+        return () => {
+            clearInterval(statsInterval);
+            clearInterval(timerInterval);
+        };
+    }, [settings.isExamStarted, settings.startTime, settings.examDuration, settings.prepDuration]);
+
+    const formatTime = (seconds) => {
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = seconds % 60;
+        return `${h > 0 ? h + ':' : ''}${m < 10 ? '0' + m : m}:${s < 10 ? '0' + s : s}`;
+    };
 
     const toggleExam = async () => {
+        const newStatus = !settings.isExamStarted;
+        if (!window.confirm(`Are you sure you want to ${newStatus ? 'START' : 'STOP'} the exam?`)) return;
+
         try {
             const res = await axios.post('http://localhost:5000/api/admin/settings', {
-                isExamStarted: !settings.isExamStarted,
-                examDuration: settings.examDuration
+                isExamStarted: newStatus,
+                examDuration: settings.examDuration || 30,
+                prepDuration: 0
             });
             setSettings(res.data);
-            alert(`Exam ${res.data.isExamStarted ? 'STARTED' : 'STOPPED'}`);
         } catch (err) {
-            alert('Failed to update exam status');
+            alert('CRITICAL_ERROR: Failed to update synchronization layer.');
         }
     };
 
@@ -129,8 +174,19 @@ const AdminDashboard = () => {
             fetchQuestions();
             fetchStats();
         } catch (err) {
-            console.error("Deletion failed", err);
             alert("DELETION_FAILED: DATABASE_ACCESS_DENIED");
+        }
+    };
+
+    const handleDeleteStudent = async (id, name) => {
+        if (!window.confirm(`PURGE STUDENT: "${name}"? This will permanently delete all their data.`)) return;
+        try {
+            await axios.delete(`http://localhost:5000/api/admin/students/${id}`);
+            setStudents(prev => prev.filter(s => s._id !== id));
+            if (selectedStudent?._id === id) setSelectedStudent(null);
+            fetchStats();
+        } catch (err) {
+            alert("DELETION_FAILED: " + (err.response?.data?.message || 'Server error'));
         }
     };
 
@@ -161,7 +217,22 @@ const AdminDashboard = () => {
                     </div>
                     <h2 className="uppercase font-black tracking-widest text-white text-sm md:text-base">Command Center</h2>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-6">
+                    {settings.isExamStarted && (
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            background: examTimeLeft > 0 && examTimeLeft <= 300 ? 'rgba(239,68,68,0.1)' : 'rgba(0,255,162,0.08)',
+                            border: `1px solid ${examTimeLeft > 0 && examTimeLeft <= 300 ? 'rgba(239,68,68,0.35)' : 'rgba(0,255,162,0.25)'}`,
+                            padding: '8px 16px', borderRadius: 12
+                        }}>
+                            <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.12em', color: examTimeLeft > 0 && examTimeLeft <= 300 ? '#ef4444' : 'var(--primary-neon)', animation: examTimeLeft > 0 && examTimeLeft <= 300 ? 'pulse 1s infinite' : 'none' }}>
+                                {examTimeLeft > 0 && examTimeLeft <= 300 ? '⚠ Critical' : '● Exam Live'}
+                            </span>
+                            <span style={{ fontSize: 14, fontFamily: 'monospace', fontWeight: 900, color: examTimeLeft > 0 && examTimeLeft <= 300 ? '#ef4444' : '#fff' }}>
+                                {examTimeLeft > 0 ? formatTime(examTimeLeft) : '--:--'}
+                            </span>
+                        </div>
+                    )}
                     <div className="hidden sm:flex flex-col items-end border-r pr-4 border-white/10 text-white">
                         <span className="text-[10px] font-black uppercase text-primary tracking-tighter leading-none mb-1">Root_Admin</span>
                         <span className="text-[8px] opacity-40 uppercase tracking-widest leading-none">System_Override_Enabled</span>
@@ -221,13 +292,80 @@ const AdminDashboard = () => {
                         </div>
                     </div>
 
-                    <div className="menu-card" onClick={toggleExam}>
+                    {/* ── Exam Report Card ── */}
+                    <div className="menu-card" onClick={() => setShowReport(!showReport)}>
                         <div className="menu-icon-wrapper">
-                            <Settings size={32} className={settings.isExamStarted ? "animate-spin" : ""} />
+                            <BarChart2 size={32} />
                         </div>
                         <div className="menu-info">
-                            <h2>{settings.isExamStarted ? 'Stop Exam' : 'Start Exam'}</h2>
-                            <p>{settings.isExamStarted ? 'Cease all operations.' : 'Initialize mission timer.'}</p>
+                            <h2>Exam Report</h2>
+                            <p>Attendance, attempts & question stats.</p>
+                        </div>
+                    </div>
+
+                    {/* ── Exam Control Panel ── */}
+                    <div className="menu-card" style={{ cursor: 'default' }} onClick={e => e.stopPropagation()}>
+                        <div style={{ width: '100%', padding: '4px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                                <Settings size={18} style={{ color: 'var(--primary-neon)' }} />
+                                <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'var(--primary-neon)' }}>Mission Parameters</span>
+                            </div>
+
+                            {!settings.isExamStarted && (
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.5, marginBottom: 6 }}>Exam Duration (min)</label>
+                                        <input type="number" value={settings.examDuration || 30}
+                                            onChange={e => setSettings({ ...settings, examDuration: parseInt(e.target.value) || 30 })}
+                                            style={{ width: '100%', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(0,255,162,0.15)', borderRadius: 10, padding: '8px 12px', color: '#fff', fontFamily: 'monospace', fontSize: 13 }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.5, marginBottom: 6 }}>Prep Wait (min)</label>
+                                        <input type="number" value={settings.prepDuration ?? 0}
+                                            onChange={e => setSettings({ ...settings, prepDuration: parseInt(e.target.value) ?? 0 })}
+                                            style={{ width: '100%', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(0,255,162,0.15)', borderRadius: 10, padding: '8px 12px', color: '#fff', fontFamily: 'monospace', fontSize: 13 }}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {settings.isExamStarted && (
+                                <div style={{ marginBottom: 16 }}>
+                                    {/* Exam countdown — same style as student dashboard */}
+                                    <div style={{
+                                        padding: '14px 12px',
+                                        background: examTimeLeft > 0 && examTimeLeft <= 300 ? 'rgba(239,68,68,0.08)' : 'rgba(0,255,162,0.05)',
+                                        border: `1px solid ${examTimeLeft > 0 && examTimeLeft <= 300 ? 'rgba(239,68,68,0.3)' : 'rgba(0,255,162,0.15)'}`,
+                                        borderRadius: 14, textAlign: 'center'
+                                    }}>
+                                        <p style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.15em', opacity: 0.55, marginBottom: 6, color: examTimeLeft > 0 && examTimeLeft <= 300 ? '#ef4444' : 'var(--primary-neon)' }}>
+                                            Exam Time Remaining
+                                        </p>
+                                        <div style={{
+                                            fontSize: '2rem', fontWeight: 900, fontFamily: 'monospace', lineHeight: 1,
+                                            color: examTimeLeft > 0 && examTimeLeft <= 300 ? '#ef4444' : 'var(--primary-neon)',
+                                            textShadow: examTimeLeft > 0 && examTimeLeft <= 300 ? '0 0 20px rgba(239,68,68,0.6)' : '0 0 20px var(--primary-glow)',
+                                            animation: examTimeLeft > 0 && examTimeLeft <= 300 ? 'pulse 1s infinite' : 'none'
+                                        }}>
+                                            {examTimeLeft > 0 ? formatTime(examTimeLeft) : '00:00'}
+                                        </div>
+                                        {examTimeLeft > 0 && examTimeLeft <= 300 && (
+                                            <p style={{ fontSize: 9, color: '#ef4444', textTransform: 'uppercase', marginTop: 6, fontWeight: 900 }}>⚠ Less than 5 min left</p>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            <button onClick={toggleExam}
+                                style={{
+                                    width: '100%', padding: '12px', borderRadius: 12, fontWeight: 900, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.15em', border: 'none', cursor: 'pointer', transition: 'all 0.3s',
+                                    background: settings.isExamStarted ? 'rgba(239,68,68,0.2)' : 'var(--primary-neon)',
+                                    color: settings.isExamStarted ? '#ef4444' : '#000',
+                                    boxShadow: settings.isExamStarted ? '0 0 20px rgba(239,68,68,0.2)' : '0 0 20px var(--primary-glow)'
+                                }}>
+                                {settings.isExamStarted ? '⏹ Stop Exam' : '▶ Start Exam'}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -322,6 +460,7 @@ const AdminDashboard = () => {
                                             <th className="p-4">Credentials</th>
                                             <th className="p-4">Recruit Info</th>
                                             <th className="p-4">Joined / Last Act.</th>
+                                            <th className="p-4 text-center">Duration</th>
                                             <th className="p-4 text-center">Score</th>
                                             <th className="p-4 text-center">Missions</th>
                                             <th className="p-4 text-right">Actions</th>
@@ -339,8 +478,10 @@ const AdminDashboard = () => {
                                                     </div>
                                                 </td>
                                                 <td className="p-4">
-                                                    <div className="font-black text-white text-sm tracking-tight">{s.name}</div>
-                                                    <div className="text-[10px] opacity-40 uppercase font-bold tracking-tighter">{s.collegeName || 'CORRUPTED_SOURCE'}</div>
+                                                    <div className="font-black text-white text-base tracking-tight leading-none mb-1">{s.name}</div>
+                                                    <div className="text-[10px] text-primary/80 uppercase font-black tracking-widest flex items-center gap-1">
+                                                        <span className="opacity-40 font-mono">SOURCE//</span> {s.collegeName || 'CORRUPTED_SOURCE'}
+                                                    </div>
                                                 </td>
                                                 <td className="p-4">
                                                     <div className={`text-[10px] px-3 py-1 rounded-full inline-block font-black tracking-widest border ${s.participationType === 'team' ? 'bg-purple-900/40 border-purple-500/30 text-purple-400' : 'bg-blue-900/40 border-blue-500/30 text-blue-400'}`}>
@@ -363,26 +504,46 @@ const AdminDashboard = () => {
                                                     </div>
                                                 </td>
                                                 <td className="p-4 text-center">
-                                                    <div className="text-xl font-black text-primary font-mono drop-shadow-neon">{s.score}</div>
+                                                    {s.isCompleted ? (
+                                                        <div className="text-xs font-black text-primary font-mono">
+                                                            {Math.floor(s.duration / 60)}m {s.duration % 60}s
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-[10px] opacity-20 font-black uppercase">Active</div>
+                                                    )}
                                                 </td>
                                                 <td className="p-4 text-center">
-                                                    <div className="inline-flex items-center gap-2 bg-white/5 px-3 py-1 rounded-lg border border-white/10">
-                                                        <span className="text-xs font-black text-white mono">
+                                                    <div className={`text-xl font-black font-mono drop-shadow-neon ${s.isCompleted ? 'text-primary' : 'text-white/80'}`}>{s.score}</div>
+                                                </td>
+                                                <td className="p-4 text-center">
+                                                    <div className={`inline-flex items-center gap-2 bg-white/5 px-3 py-1 rounded-lg border ${s.isCompleted ? 'border-primary/50 bg-primary/5' : 'border-white/10'}`}>
+                                                        <span className={`text-xs font-black mono ${s.isCompleted ? 'text-primary' : 'text-white'}`}>
                                                             {s.submissions?.filter(sub => sub.isCorrect).length || 0}
                                                         </span>
                                                         <span className="text-[8px] opacity-30 font-black">/</span>
                                                         <span className="text-[10px] opacity-50 font-black">
                                                             {allQuestions.length}
                                                         </span>
+                                                        {s.isCompleted && <CheckCircle2 size={10} className="text-primary ml-1" />}
                                                     </div>
                                                 </td>
                                                 <td className="p-4 text-right">
-                                                    <button
-                                                        onClick={() => setSelectedStudent(s)}
-                                                        className="text-[10px] bg-white/5 border border-white/10 px-4 py-2 rounded-xl hover:bg-white/10 hover:border-white/30 transition-all uppercase font-black tracking-widest text-white shadow-soft"
-                                                    >
-                                                        ANALYSIS_LOG
-                                                    </button>
+                                                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                                                        <button
+                                                            onClick={() => setSelectedStudent(s)}
+                                                            className="text-[10px] bg-white/5 border border-white/10 px-4 py-2 rounded-xl hover:bg-white/10 hover:border-white/30 transition-all uppercase font-black tracking-widest text-white shadow-soft"
+                                                        >
+                                                            ANALYSIS_LOG
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDeleteStudent(s._id, s.name)}
+                                                            style={{ fontSize: 10, background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', padding: '8px 14px', borderRadius: 12, fontWeight: 900, textTransform: 'uppercase', cursor: 'pointer', transition: 'all 0.2s', letterSpacing: '0.08em' }}
+                                                            onMouseEnter={e => { e.target.style.background = '#ef4444'; e.target.style.color = '#fff'; }}
+                                                            onMouseLeave={e => { e.target.style.background = 'rgba(239,68,68,0.15)'; e.target.style.color = '#ef4444'; }}
+                                                        >
+                                                            PURGE
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}
