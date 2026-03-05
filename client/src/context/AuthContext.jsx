@@ -1,6 +1,8 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import axios from 'axios';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 const AuthContext = createContext();
 
 export const useAuth = () => useContext(AuthContext);
@@ -21,7 +23,7 @@ export const AuthProvider = ({ children }) => {
     }, []);
 
     const login = async (loginData) => {
-        const res = await axios.post('http://localhost:5000/api/auth/login', loginData);
+        const res = await axios.post(`${API_URL}/api/auth/login`, loginData);
         const { token, user } = res.data;
 
         localStorage.setItem('token', token);
@@ -34,7 +36,7 @@ export const AuthProvider = ({ children }) => {
 
     const logout = async () => {
         try {
-            await axios.post('http://localhost:5000/api/auth/logout');
+            await axios.post(`${API_URL}/api/auth/logout`);
         } catch (err) {
             console.error("Logout notification failed", err);
         }

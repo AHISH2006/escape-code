@@ -7,6 +7,8 @@ import { useAuth } from '../context/AuthContext';
 import LogoutButton from '../components/LogoutButton';
 import '../styles/Dashboard.css';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 /**
  * EXAM FLOW:
  *  1. Admin starts exam  → isExamStarted = true in DB
@@ -52,7 +54,7 @@ const Dashboard = () => {
     const loadQuestions = useCallback(async () => {
         if (didFetchQuestions.current) return;       // already loaded
         try {
-            const res = await axios.get('http://localhost:5000/api/questions');
+            const res = await axios.get(`${API_URL}/api/questions`);
             if (res.data && res.data.length > 0) {
                 setQuestions(res.data);
                 didFetchQuestions.current = true;    // mark success
@@ -67,7 +69,7 @@ const Dashboard = () => {
     // ── Load user submissions ─────────────────────────────────────────────────
     const loadSubmissions = useCallback(async () => {
         try {
-            const res = await axios.get('http://localhost:5000/api/auth/me');
+            const res = await axios.get(`${API_URL}/api/auth/me`);
             setUserSubmissions(res.data?.submissions || []);
             setIsCompleted(res.data?.isCompleted || false);
         } catch { /* silent */ }
@@ -76,7 +78,7 @@ const Dashboard = () => {
     // ── Main poll: checks exam status from server every 3 seconds ─────────────
     const pollExamStatus = useCallback(async () => {
         try {
-            const res = await axios.get('http://localhost:5000/api/admin/settings');
+            const res = await axios.get(`${API_URL}/api/admin/settings`);
             const data = res.data;
 
             if (!data.isExamStarted) {
@@ -164,7 +166,7 @@ const Dashboard = () => {
         if (!output.trim()) { alert('Please paste the output of your code in the Verification Terminal first.'); return; }
         setIsSubmitting(true);
         try {
-            const res = await axios.post('http://localhost:5000/api/questions/submit-answer', {
+            const res = await axios.post(`${API_URL}/api/questions/submit-answer`, {
                 questionId: selectedQuestion._id, code, output
             });
             setIsCorrect(res.data.isCorrect);
@@ -185,7 +187,7 @@ const Dashboard = () => {
         if (!window.confirm('CRITICAL: Finalize all missions? This action is permanent.')) return;
         setIsSubmitting(true);
         try {
-            await axios.post('http://localhost:5000/api/questions/submit');
+            await axios.post(`${API_URL}/api/questions/submit`);
             setIsCompleted(true);
             alert('MISSION_COMPLETE: All data finalized.');
         } catch { alert('SYSTEM_ERROR: Finalization failed.'); }

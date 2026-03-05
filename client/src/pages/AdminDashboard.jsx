@@ -7,6 +7,8 @@ import { useAuth } from '../context/AuthContext';
 import LogoutButton from '../components/LogoutButton';
 import '../styles/AdminDashboard.css';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 const AdminDashboard = () => {
     const [stats, setStats] = useState({
         totalStudents: 0,
@@ -41,8 +43,8 @@ const AdminDashboard = () => {
 
     const fetchStats = async () => {
         try {
-            const adminStatsRes = await axios.get('http://localhost:5000/api/admin/stats');
-            const questionsRes = await axios.get('http://localhost:5000/api/questions');
+            const adminStatsRes = await axios.get(`${API_URL}/api/admin/stats`);
+            const questionsRes = await axios.get(`${API_URL}/api/questions`);
 
             setStats({
                 totalStudents: adminStatsRes.data.totalStudents,
@@ -56,7 +58,7 @@ const AdminDashboard = () => {
 
     const fetchExamReport = async () => {
         try {
-            const res = await axios.get('http://localhost:5000/api/admin/exam-report');
+            const res = await axios.get(`${API_URL}/api/admin/exam-report`);
             setExamReport(res.data);
         } catch (err) {
             console.error('Failed to fetch exam report', err);
@@ -65,7 +67,7 @@ const AdminDashboard = () => {
 
     const fetchSettings = async () => {
         try {
-            const res = await axios.get('http://localhost:5000/api/admin/settings');
+            const res = await axios.get(`${API_URL}/api/admin/settings`);
             setSettings(res.data);
         } catch (err) {
             console.error("Failed to fetch settings", err);
@@ -74,7 +76,7 @@ const AdminDashboard = () => {
 
     const fetchQuestions = async () => {
         try {
-            const res = await axios.get('http://localhost:5000/api/questions');
+            const res = await axios.get(`${API_URL}/api/questions`);
             setAllQuestions(res.data);
         } catch (err) {
             console.error("Failed to fetch questions", err);
@@ -83,7 +85,7 @@ const AdminDashboard = () => {
 
     const fetchStudents = async () => {
         try {
-            const res = await axios.get('http://localhost:5000/api/admin/students');
+            const res = await axios.get(`${API_URL}/api/admin/students`);
             setStudents(res.data);
         } catch (err) {
             console.error("Failed to fetch students", err);
@@ -137,7 +139,7 @@ const AdminDashboard = () => {
         if (!window.confirm(`Are you sure you want to ${newStatus ? 'START' : 'STOP'} the exam?`)) return;
 
         try {
-            const res = await axios.post('http://localhost:5000/api/admin/settings', {
+            const res = await axios.post(`${API_URL}/api/admin/settings`, {
                 isExamStarted: newStatus,
                 examDuration: settings.examDuration || 30,
                 prepDuration: 0
@@ -152,10 +154,10 @@ const AdminDashboard = () => {
         e.preventDefault();
         try {
             if (editingQuestion) {
-                await axios.put(`http://localhost:5000/api/questions/${editingQuestion._id}`, newQuestion);
+                await axios.put(`${API_URL}/api/questions/${editingQuestion._id}`, newQuestion);
                 alert('Challenge updated successfully!');
             } else {
-                await axios.post('http://localhost:5000/api/questions', newQuestion);
+                await axios.post(`${API_URL}/api/questions`, newQuestion);
                 alert('Challenge deployed into the system!');
             }
             setShowForm(false);
@@ -170,7 +172,7 @@ const AdminDashboard = () => {
     const handleDeleteQuestion = async (id) => {
         if (!window.confirm("ARE_YOU_SURE? THIS_PROCESS_IS_IRREVERSIBLE.")) return;
         try {
-            await axios.delete(`http://localhost:5000/api/questions/${id}`);
+            await axios.delete(`${API_URL}/api/questions/${id}`);
             fetchQuestions();
             fetchStats();
         } catch (err) {
@@ -181,7 +183,7 @@ const AdminDashboard = () => {
     const handleDeleteStudent = async (id, name) => {
         if (!window.confirm(`PURGE STUDENT: "${name}"? This will permanently delete all their data.`)) return;
         try {
-            await axios.delete(`http://localhost:5000/api/admin/students/${id}`);
+            await axios.delete(`${API_URL}/api/admin/students/${id}`);
             setStudents(prev => prev.filter(s => s._id !== id));
             if (selectedStudent?._id === id) setSelectedStudent(null);
             fetchStats();
