@@ -1,0 +1,196 @@
+:root {
+    --header-height: 72px;
+    --sidebar-width: 320px;
+    --transition-standard: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dashboard-container {
+    min-height: 100vh;
+    background: var(--bg-dark);
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+}
+
+.dashboard-header {
+    height: var(--header-height);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.dashboard-main {
+    display: flex;
+    flex: 1;
+    height: calc(100vh - var(--header-height));
+    overflow: hidden;
+}
+
+/* Sidebar Styling */
+.sidebar {
+    width: var(--sidebar-width);
+    background: rgba(0, 0, 0, 0.4);
+    border-right: 1px solid var(--glass-border);
+    padding: 2rem 1.5rem;
+    overflow-y: auto;
+    transition: var(--transition-standard);
+    backdrop-filter: blur(20px);
+}
+
+.sidebar-title {
+    font-size: 0.7rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--text-dim);
+    margin-bottom: 2rem;
+    padding-left: 0.5rem;
+    border-left: 2px solid var(--primary);
+}
+
+.task-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.task-item {
+    padding: 1rem 1.25rem;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--glass-border);
+    cursor: pointer;
+    transition: var(--transition-standard);
+    color: var(--text-dim);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.task-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--primary);
+    transform: translateX(8px);
+    color: #fff;
+}
+
+.task-item.active {
+    background: linear-gradient(135deg, rgba(0, 255, 170, 0.1) 0%, rgba(0, 255, 170, 0.05) 100%);
+    border-color: var(--primary);
+    box-shadow: 0 0 20px rgba(0, 255, 170, 0.1);
+    color: var(--primary);
+}
+
+.task-item.completed {
+    border-color: rgba(0, 255, 170, 0.3);
+}
+
+/* Content Area */
+.dashboard-content {
+    flex: 1;
+    padding: 1.5rem;
+    overflow-y: auto;
+    background: radial-gradient(circle at top right, rgba(0, 255, 170, 0.03), transparent 40%);
+}
+
+.content-area {
+    background: rgba(255, 255, 255, 0.01);
+    border-radius: 2rem;
+    min-height: 100%;
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(10px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Mission Cards Grid */
+.mission-card {
+    transition: var(--transition-standard);
+}
+
+.mission-card:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.shadow-neon-green {
+    box-shadow: 0 0 15px rgba(0, 255, 170, 0.4);
+}
+
+/* Drop Shadow Neon */
+.drop-shadow-neon {
+    filter: drop-shadow(0 0 8px var(--primary));
+}
+
+/* Progress Pill */
+.progress-pill {
+    backdrop-filter: blur(10px);
+}
+
+/* Responsive Overrides */
+@media (max-width: 1024px) {
+    .sidebar {
+        width: 260px;
+    }
+}
+
+@media (max-width: 768px) {
+    .dashboard-main {
+        flex-direction: column;
+        height: auto;
+        overflow: visible;
+    }
+
+    .sidebar {
+        display: none;
+        /* Hide sidebar on mobile for now, use mission grid */
+    }
+
+    .dashboard-content {
+        padding: 1rem;
+        height: auto;
+    }
+
+    .content-area {
+        border-radius: 1.5rem;
+    }
+
+    .problem-header {
+        padding: 1.5rem !important;
+    }
+
+    .problem-details-grid {
+        padding: 1rem !important;
+    }
+
+    .finalize-section {
+        padding: 2rem !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .dashboard-header {
+        padding: 0 1rem;
+    }
+
+    .problem-title {
+        font-size: 1.25rem !important;
+    }
+
+    .mission-card {
+        padding: 1.25rem !important;
+        border-radius: 1.5rem !important;
+    }
+}
+
+/* UI Scrollbar */
+.dashboard-content::-webkit-scrollbar,
+.sidebar::-webkit-scrollbar {
+    width: 4px;
+}
+
+.dashboard-content::-webkit-scrollbar-thumb,
+.sidebar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+}
