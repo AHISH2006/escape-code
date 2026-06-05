@@ -36,8 +36,8 @@ const corsOptions = {
 // 1. CORS must be first — handles OPTIONS preflight before anything else
 app.use(cors(corsOptions));
 
-// 2. Explicitly handle OPTIONS preflight for all routes (Express 5 requirement)
-app.options('*', cors(corsOptions));
+// 2. Explicitly handle OPTIONS preflight for all routes (Express 5 syntax: '/{*path}')
+app.options('/{*path}', cors(corsOptions));
 
 // 3. Helmet after CORS (configured to not interfere with CORS headers)
 app.use(helmet({
